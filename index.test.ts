@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readDocxFile, validateDocxFile, htmlToMarkdown } from './index';
+import { readDocxFile, validateDocxFile, writeDocxFile, htmlToMarkdown } from './index';
 import * as fs from 'fs/promises';
 import * as mammoth from 'mammoth';
 
@@ -14,6 +14,31 @@ vi.mock('fs/promises');
 vi.mock('mammoth', () => ({
   convertToHtml: vi.fn(),
   extractRawText: vi.fn(),
+}));
+
+// Mock docx module
+vi.mock('docx', () => ({
+  Document: vi.fn().mockImplementation(() => ({})),
+  Packer: {
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from('mock docx content')),
+  },
+  Paragraph: vi.fn().mockImplementation(() => ({})),
+  TextRun: vi.fn().mockImplementation(() => ({})),
+  HeadingLevel: {
+    TITLE: 'TITLE',
+    HEADING_1: 'HEADING_1',
+    HEADING_2: 'HEADING_2',
+    HEADING_3: 'HEADING_3',
+    HEADING_4: 'HEADING_4',
+    HEADING_5: 'HEADING_5',
+    HEADING_6: 'HEADING_6',
+  },
+  AlignmentType: {
+    CENTER: 'CENTER',
+  },
+  UnderlineType: {
+    SINGLE: 'SINGLE',
+  },
 }));
 
 describe('htmlToMarkdown', () => {
@@ -310,5 +335,191 @@ describe('readDocxFile', () => {
 
     expect(result.success).toBe(true);
     expect(result.warnings).toBeUndefined();
+  });
+});
+
+describe('writeDocxFile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should create a new DOCX file', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content: '# Test Document\n\nThis is a test.',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.filePath).toBe('/test/output.docx');
+    expect(result.size).toBe(2048);
+  });
+
+  it('should fail if file exists and overwrite is false', async () => {
+    vi.mocked(fs.access).mockResolvedValue(undefined);
+
+    const result = await writeDocxFile({
+      filePath: '/test/existing.docx',
+      content: 'Content',
+      overwrite: false,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('already exists');
+  });
+
+  it('should overwrite existing file when overwrite is true', async () => {
+    vi.mocked(fs.access).mockResolvedValue(undefined);
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const result = await writeDocxFile({
+      filePath: '/test/existing.docx',
+      content: 'New content',
+      overwrite: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(fs.writeFile).toHaveBeenCalled();
+  });
+
+  it('should create directory if it does not exist', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const result = await writeDocxFile({
+      filePath: '/test/newdir/output.docx',
+      content: 'Content',
+    });
+
+    expect(result.success).toBe(true);
+    expect(fs.mkdir).toHaveBeenCalledWith('/test/newdir', { recursive: true });
+  });
+
+  it('should include title and author in document', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content: 'Content',
+      title: 'My Document',
+      author: 'Test Author',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle write errors', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockRejectedValue(new Error('Write failed'));
+
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content: 'Content',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Write failed');
+  });
+
+  it('should handle markdown content with headings', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const content = '# Heading 1\n\n## Heading 2\n\n### Heading 3';
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle markdown content with lists', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const content = '- Item 1\n- Item 2\n- Item 3';
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle markdown content with bold and italic', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const content = '**Bold text** and *italic text*';
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle markdown content with code', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const content = 'Inline `code` and regular text';
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle markdown content with blockquotes', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const content = '> This is a quote';
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle markdown content with horizontal rules', async () => {
+    vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue({ size: 2048 } as any);
+
+    const content = 'Text before\n\n---\n\nText after';
+    const result = await writeDocxFile({
+      filePath: '/test/output.docx',
+      content,
+    });
+
+    expect(result.success).toBe(true);
   });
 });

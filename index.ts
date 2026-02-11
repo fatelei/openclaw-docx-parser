@@ -1,11 +1,13 @@
 /**
  * OpenClaw DOCX Parser Plugin
  *
- * A plugin for reading and parsing Microsoft Word (.docx) files.
+ * A plugin for reading and writing Microsoft Word (.docx) files.
  * Supports extracting text, markdown, and HTML content from DOCX files.
+ * Supports creating DOCX files from markdown or plain text content.
  */
 
 import * as mammoth from 'mammoth';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, UnderlineType } from 'docx';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -43,6 +45,28 @@ interface DocxValidateOptions {
 interface DocxValidateResult {
   success: boolean;
   valid: boolean;
+  size?: number;
+  error?: string;
+}
+
+interface DocxWriteOptions {
+  /** Absolute path to the output .docx file */
+  filePath: string;
+  /** Content to write (supports markdown or plain text) */
+  content: string;
+  /** Content format: 'text' or 'markdown' */
+  inputFormat?: 'text' | 'markdown';
+  /** Document title (optional) */
+  title?: string;
+  /** Author name (optional) */
+  author?: string;
+  /** Whether to overwrite existing file (default: false) */
+  overwrite?: boolean;
+}
+
+interface DocxWriteResult {
+  success: boolean;
+  filePath?: string;
   size?: number;
   error?: string;
 }
@@ -213,6 +237,339 @@ async function readDocxFile(options: DocxReadOptions): Promise<DocxReadResult> {
 }
 
 /**
+ * Parse markdown-style text and convert to DOCX paragraphs
+ */
+function parseMarkdownToParagraphs(markdown: string, title?: string): Paragraph[] {
+  const paragraphs: Paragraph[] = [];
+  const lines = markdown.split('\n');
+
+  // Add title if provided
+  if (title) {
+    paragraphs.push(
+      new Paragraph({
+        text: title,
+        heading: HeadingLevel.TITLE,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 400 },
+      })
+    );
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip empty lines
+    if (!trimmed) {
+      paragraphs.push(new Paragraph({ text: '' }));
+      continue;
+    }
+
+    // Headings
+    if (trimmed.startsWith('# ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: trimmed.slice(2), bold: true, size: 32 })],
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 200, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith('## ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: trimmed.slice(3), bold: true, size: 28 })],
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith('### ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: trimmed.slice(4), bold: true, size: 26 })],
+          heading: HeadingLevel.HEADING_3,
+          spacing: { before: 160, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith('#### ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: trimmed.slice(5), bold: true, size: 24 })],
+          heading: HeadingLevel.HEADING_4,
+          spacing: { before: 140, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith('##### ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: trimmed.slice(6), bold: true, size: 22 })],
+          heading: HeadingLevel.HEADING_5,
+          spacing: { before: 120, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith('###### ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: trimmed.slice(7), bold: true, size: 20 })],
+          heading: HeadingLevel.HEADING_6,
+          spacing: { before: 100, after: 100 },
+        })
+      );
+    }
+    // Bold text: **text** or __text__
+    else if (trimmed.match(/^\*\*(.+)\*\*$/) || trimmed.match(/^__(.+)__$/)) {
+      const match = trimmed.match(/^\*\*(.+)\*\*$/) || trimmed.match(/^__(.+)__$/);
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: match![1], bold: true })],
+          spacing: { after: 100 },
+        })
+      );
+    }
+    // Italic text: *text* or _text_
+    else if (trimmed.match(/^\*(.+)\*$/) && !trimmed.startsWith('**')) {
+      const match = trimmed.match(/^\*(.+)\*$/);
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: match![1], italics: true })],
+          spacing: { after: 100 },
+        })
+      );
+    }
+    // Lists: - item or * item
+    else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: '• ' }),
+            new TextRun({ text: trimmed.slice(2) }),
+          ],
+          indent: { left: 720 },
+          spacing: { after: 60 },
+        })
+      );
+    }
+    // Numbered lists: 1. item
+    else if (trimmed.match(/^\d+\.\s/)) {
+      const match = trimmed.match(/^\d+\.\s(.+)$/);
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: match![1] }),
+          ],
+          numbering: {
+            reference: 'default-numbering',
+            level: 0,
+          },
+          spacing: { after: 60 },
+        })
+      );
+    }
+    // Blockquotes: > text
+    else if (trimmed.startsWith('> ')) {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: trimmed.slice(2),
+              italics: true,
+              color: '666666',
+            }),
+          ],
+          indent: { left: 720 },
+          border: {
+            left: {
+              color: 'CCCCCC',
+              space: 120,
+              style: 'single',
+              size: 6,
+            },
+          },
+          spacing: { after: 100 },
+        })
+      );
+    }
+    // Horizontal rule: --- or ***
+    else if (trimmed === '---' || trimmed === '***') {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: '',
+            }),
+          ],
+          border: {
+            bottom: {
+              color: 'CCCCCC',
+              space: 100,
+              style: 'single',
+              size: 6,
+            },
+          },
+          spacing: { before: 200, after: 200 },
+        })
+      );
+    }
+    // Inline formatting within text
+    else {
+      // Parse inline formatting
+      const textRuns = parseInlineFormatting(trimmed);
+      paragraphs.push(
+        new Paragraph({
+          children: textRuns,
+          spacing: { after: 100 },
+        })
+      );
+    }
+  }
+
+  return paragraphs;
+}
+
+/**
+ * Parse inline formatting (bold, italic, code, links)
+ */
+function parseInlineFormatting(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  let current = '';
+  let i = 0;
+
+  while (i < text.length) {
+    // Bold: **text**
+    if (text.slice(i).startsWith('**') && text.slice(i + 2).includes('**')) {
+      if (current) {
+        runs.push(new TextRun(current));
+        current = '';
+      }
+      const end = text.indexOf('**', i + 2);
+      runs.push(new TextRun({ text: text.slice(i + 2, end), bold: true }));
+      i = end + 2;
+      continue;
+    }
+
+    // Italic: *text*
+    if (text[i] === '*' && text.slice(i + 1).includes('*') && !text.slice(i).startsWith('**')) {
+      if (current) {
+        runs.push(new TextRun(current));
+        current = '';
+      }
+      const end = text.indexOf('*', i + 1);
+      runs.push(new TextRun({ text: text.slice(i + 1, end), italics: true }));
+      i = end + 1;
+      continue;
+    }
+
+    // Inline code: `text`
+    if (text[i] === '`' && text.slice(i + 1).includes('`')) {
+      if (current) {
+        runs.push(new TextRun(current));
+        current = '';
+      }
+      const end = text.indexOf('`', i + 1);
+      runs.push(
+        new TextRun({
+          text: text.slice(i + 1, end),
+          font: 'Courier New',
+          color: 'E74C3C',
+        })
+      );
+      i = end + 1;
+      continue;
+    }
+
+    // Links: [text](url)
+    if (text[i] === '[' && text.slice(i + 1).includes('](') && text.slice(i + 1).includes(')')) {
+      if (current) {
+        runs.push(new TextRun(current));
+        current = '';
+      }
+      const endBracket = text.indexOf(']', i);
+      const endParen = text.indexOf(')', endBracket);
+      const linkText = text.slice(i + 1, endBracket);
+      const url = text.slice(endBracket + 2, endParen);
+      runs.push(
+        new TextRun({
+          text: linkText,
+          color: '3498DB',
+          underline: { type: UnderlineType.SINGLE },
+        })
+      );
+      i = endParen + 1;
+      continue;
+    }
+
+    current += text[i];
+    i++;
+  }
+
+  if (current) {
+    runs.push(new TextRun(current));
+  }
+
+  return runs.length > 0 ? runs : [new TextRun(text)];
+}
+
+/**
+ * Write content to a DOCX file
+ */
+async function writeDocxFile(options: DocxWriteOptions): Promise<DocxWriteResult> {
+  const { filePath, content, inputFormat = 'markdown', title, author, overwrite = false } = options;
+
+  try {
+    // Check if file exists
+    try {
+      await fs.access(filePath);
+      if (!overwrite) {
+        return {
+          success: false,
+          error: `File already exists: ${filePath}. Set overwrite=true to overwrite.`,
+        };
+      }
+    } catch {
+      // File doesn't exist, which is fine
+    }
+
+    // Ensure directory exists
+    const dir = path.dirname(filePath);
+    await fs.mkdir(dir, { recursive: true });
+
+    // Parse content into paragraphs
+    const paragraphs = parseMarkdownToParagraphs(content, title);
+
+    // Create document
+    const doc = new Document({
+      creator: author || 'OpenClaw DOCX Parser',
+      title: title || 'Document',
+      description: 'Created with OpenClaw DOCX Parser Plugin',
+      sections: [
+        {
+          properties: {},
+          children: paragraphs,
+        },
+      ],
+    });
+
+    // Create buffer
+    const buffer = await Packer.toBuffer(doc);
+
+    // Write to file
+    await fs.writeFile(filePath, buffer);
+
+    // Get file size
+    const stats = await fs.stat(filePath);
+
+    return {
+      success: true,
+      filePath,
+      size: stats.size,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Failed to write DOCX file',
+    };
+  }
+}
+
+/**
  * Plugin entry point
  */
 export default function register(api: any) {
@@ -271,6 +628,48 @@ export default function register(api: any) {
     },
   });
 
+  // Register the docx_write tool
+  api.registerTool({
+    name: 'docx_write',
+    description: '创建并写入 Microsoft Word (.docx) 文件。支持 Markdown 或纯文本格式。',
+    parameters: {
+      type: 'object',
+      properties: {
+        filePath: {
+          type: 'string',
+          description: '输出 docx 文件的绝对路径',
+        },
+        content: {
+          type: 'string',
+          description: '要写入的内容（支持 Markdown 或纯文本）',
+        },
+        inputFormat: {
+          type: 'string',
+          enum: ['text', 'markdown'],
+          description: '输入格式：text-纯文本, markdown-Markdown格式（默认）',
+          default: 'markdown',
+        },
+        title: {
+          type: 'string',
+          description: '文档标题（可选）',
+        },
+        author: {
+          type: 'string',
+          description: '作者名称（可选）',
+        },
+        overwrite: {
+          type: 'boolean',
+          description: '是否覆盖已存在的文件（默认：false）',
+          default: false,
+        },
+      },
+      required: ['filePath', 'content'],
+    },
+    handler: async (params: any) => {
+      return await writeDocxFile(params as DocxWriteOptions);
+    },
+  });
+
   // Register CLI commands
   api.registerCli(
     ({ program }: any) => {
@@ -322,12 +721,47 @@ export default function register(api: any) {
             process.exit(1);
           }
         });
+
+      program
+        .command('docx-write <file> [content]')
+        .description('Create a DOCX file from markdown or text')
+        .option('-f, --format <format>', 'Input format (text|markdown)', 'markdown')
+        .option('-t, --title <title>', 'Document title')
+        .option('-a, --author <author>', 'Author name')
+        .option('-o, --overwrite', 'Overwrite existing file')
+        .option('-c, --content <content>', 'Content (alternative to positional arg)')
+        .action(async (file: string, contentArg: string, options: any) => {
+          const content = options.content || contentArg;
+          if (!content) {
+            console.error('Error: Content is required. Provide it as argument or use --content');
+            process.exit(1);
+          }
+
+          const result = await writeDocxFile({
+            filePath: path.resolve(file),
+            content,
+            inputFormat: options.format,
+            title: options.title,
+            author: options.author,
+            overwrite: options.overwrite || false,
+          });
+
+          if (result.success) {
+            console.log(`✓ DOCX file created: ${result.filePath}`);
+            if (result.size !== undefined) {
+              console.log(`  Size: ${(result.size / 1024 / 1024).toFixed(2)} MB`);
+            }
+          } else {
+            console.error('Error:', result.error);
+            process.exit(1);
+          }
+        });
     },
-    { commands: ['docx-read', 'docx-validate'] }
+    { commands: ['docx-read', 'docx-validate', 'docx-write'] }
   );
 
   api.logger.info('DOCX Parser plugin loaded');
 }
 
 // Export for testing
-export { readDocxFile, validateDocxFile, htmlToMarkdown };
+export { readDocxFile, validateDocxFile, writeDocxFile, htmlToMarkdown };

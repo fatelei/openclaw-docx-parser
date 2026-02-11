@@ -1,7 +1,7 @@
 {
   "name": "openclaw-docx-parser",
   "version": "1.0.0",
-  "description": "OpenClaw plugin for parsing Microsoft Word .docx files",
+  "description": "OpenClaw plugin for reading and writing Microsoft Word .docx files",
   "type": "module",
   "main": "index.ts",
   "openclaw": {
@@ -20,12 +20,15 @@
     "docx",
     "word",
     "parser",
-    "mammoth"
+    "writer",
+    "mammoth",
+    "docx"
   ],
   "author": "OpenClaw Community",
   "license": "MIT",
   "dependencies": {
-    "mammoth": "^1.7.2"
+    "mammoth": "^1.7.2",
+    "docx": "^8.5.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

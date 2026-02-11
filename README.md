@@ -1,10 +1,11 @@
 # OpenClaw DOCX Parser Plugin
 
-A plugin for [OpenClaw](https://docs.openclaw.ai/) that enables reading and parsing Microsoft Word (.docx) files.
+A plugin for [OpenClaw](https://docs.openclaw.ai/) that enables reading, writing, and validating Microsoft Word (.docx) files.
 
 ## Features
 
-- Extract content from .docx files in multiple formats:
+### Reading (.docx files)
+- Extract content in multiple formats:
   - Plain text
   - Markdown (recommended)
   - HTML
@@ -12,7 +13,18 @@ A plugin for [OpenClaw](https://docs.openclaw.ai/) that enables reading and pars
 - Configurable file size limits
 - Preserves document structure (headings, lists, links, etc.)
 - Comprehensive error handling
-- Unit tested with Vitest
+
+### Writing (.docx files)
+- Create .docx files from Markdown or plain text
+- Support for headings, bold, italic, lists, blockquotes, code, links, and more
+- Automatic directory creation
+- Configurable overwrite behavior
+- Document metadata support (title, author)
+
+### Testing
+- 41 comprehensive unit tests
+- 100% test coverage for core functionality
+- Tested with Vitest
 
 ## Installation
 
@@ -61,7 +73,7 @@ Add to your `~/.openclaw/openclaw.json`:
 
 ### Agent Tools
 
-The plugin registers two tools that AI agents can use:
+The plugin registers three tools that AI agents can use:
 
 #### `docx_read`
 
@@ -76,10 +88,26 @@ const result = await docx_read({
 
 if (result.success) {
   console.log(result.content);
-  // Handle warnings if any
-  if (result.warnings) {
-    console.warn(result.warnings);
-  }
+} else {
+  console.error(result.error);
+}
+```
+
+#### `docx_write`
+
+Create a new .docx file from Markdown or text content.
+
+```javascript
+const result = await docx_write({
+  filePath: "/path/to/output.docx",
+  content: "# My Document\n\nThis is **bold** and *italic* text.",
+  title: "My Document",
+  author: "Author Name",
+  overwrite: false
+});
+
+if (result.success) {
+  console.log(`Created: ${result.filePath} (${result.size} bytes)`);
 } else {
   console.error(result.error);
 }
@@ -117,7 +145,32 @@ openclaw docx-read document.docx --max-size 20
 
 # Validate a file
 openclaw docx-validate document.docx
+
+# Write a new DOCX file from markdown
+openclaw docx-write output.docx "# Title\n\nContent here"
+
+# Write with title and author
+openclaw docx-write report.docx -t "Monthly Report" -a "Jane Doe" -c "# Report\n\nContent"
+
+# Overwrite existing file
+openclaw docx-write existing.docx --overwrite "New content"
 ```
+
+## Markdown Support for Writing
+
+The `docx_write` tool supports the following markdown syntax:
+
+| Element | Syntax | Example |
+|---------|--------|---------|
+| Heading 1-6 | `#` to `######` | `## Heading` |
+| Bold | `**text**` | `**bold text**` |
+| Italic | `*text*` | `*italic text*` |
+| Inline code | `` `code` `` | `` `code` `` |
+| Bulleted list | `- item` | `- Item 1` |
+| Numbered list | `1. item` | `1. First item` |
+| Blockquote | `> quote` | `> Quote text` |
+| Horizontal rule | `---` | `---` |
+| Links | `[text](url)` | `[Link](https://example.com)` |
 
 ## Development
 
@@ -156,7 +209,7 @@ openclaw-docx-parser/
 ├── package.json             # Dependencies
 ├── tsconfig.json           # TypeScript config
 ├── vitest.config.ts        # Test config
-├── index.test.ts           # Unit tests
+├── index.test.ts           # Unit tests (41 tests)
 ├── skills/
 │   └── docx-parser/
 │       └── SKILL.md        # Agent guidance
@@ -165,20 +218,35 @@ openclaw-docx-parser/
 
 ## How it Works
 
+### Reading
 The plugin uses [mammoth.js](https://github.com/mwilliamson/mammoth.js) to extract content from .docx files:
-
 1. **Validation**: Checks file extension and size
 2. **Extraction**: Uses mammoth to convert .docx to HTML or plain text
 3. **Conversion**: Converts HTML to Markdown (if requested)
 4. **Return**: Returns content with warnings (if any)
 
+### Writing
+The plugin uses [docx](https://docx.js.org/) to create .docx files:
+1. **Parsing**: Parses Markdown/text content into structured elements
+2. **Document Creation**: Creates a DOCX document with proper formatting
+3. **Serialization**: Converts document to buffer and writes to file
+4. **Confirmation**: Returns file path and size
+
 ## Limitations
 
+### Reading
 - Only .docx format is supported (not legacy .doc files)
-- Maximum file size: 100 MB (configurable)
+- Maximum file size: 100 MB (configurable, default 10 MB)
 - Embedded images are not extracted
 - Complex formatting may not be perfectly preserved
 - Tables are converted to basic text/markdown
+
+### Writing
+- No image embedding support
+- Tables are not supported
+- Complex nested formatting may not render perfectly
+- Some markdown extensions (footnotes, task lists, etc.) are not supported
+- Links are styled but not clickable in all Word viewers
 
 ## License
 
