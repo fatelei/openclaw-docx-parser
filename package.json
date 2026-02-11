@@ -1,0 +1,47 @@
+{
+  "name": "openclaw-docx-parser",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for parsing Microsoft Word .docx files",
+  "type": "module",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "docx",
+    "word",
+    "parser",
+    "mammoth"
+  ],
+  "author": "OpenClaw Community",
+  "license": "MIT",
+  "dependencies": {
+    "mammoth": "^1.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "^1.2.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "index.ts",
+    "openclaw.plugin.json",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "id": "docx-parser",
+  "name": "DOCX Parser",
+  "version": "1.0.0",
+  "description": "Parse Microsoft Word .docx files - extract text, markdown, or HTML",
+  "author": "OpenClaw Community",
+  "kind": "tools",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxFileSize": {
+        "type": "number",
+        "description": "Maximum file size in MB",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 100
+      },
+      "defaultOutputFormat": {
+        "type": "string",
+        "description": "Default output format for docx_read",
+        "enum": ["text", "markdown", "html"],
+        "default": "markdown"
+      }
+    }
+  },
+  "uiHints": {
+    "maxFileSize": {
+      "label": "Maximum File Size",
+      "placeholder": "10",
+      "description": "Maximum DOCX file size to process in megabytes"
+    },
+    "defaultOutputFormat": {
+      "label": "Default Output Format",
+      "description": "Default format when extracting content from DOCX files"
+    }
+  },
+  "skills": [
+    "./skills/docx-parser"
+  ]
+}
